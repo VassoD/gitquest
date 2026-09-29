@@ -1,0 +1,38 @@
+{
+  "name": "gitquest",
+  "version": "0.1.0",
+  "description": "Turn your git history into an RPG save file. Discover the achievements you forgot you unlocked.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "gitquest": "dist/cli/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "dev": "tsx src/cli/index.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "keywords": [
+    "git",
+    "github",
+    "achievements",
+    "developer",
+    "stats",
+    "readme",
+    "cli"
+  ],
+  "devDependencies": {
+    "@types/node": "22.20.4",
+    "tsx": "4.23.15",
+    "typescript": "7.0.2",
+    "vitest": "5.0.2"
+  }
+}

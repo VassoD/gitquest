@@ -1,0 +1,4 @@
+node_modules
+dist
+gitquest-report
+.DS_Store
