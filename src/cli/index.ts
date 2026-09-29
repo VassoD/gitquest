@@ -2,7 +2,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { userInfo } from "node:os";
 import { join, resolve } from "node:path";
-import { cancel, intro, log as clackLog, outro, spinner } from "@clack/prompts";
+import { cancel, intro, log as clackLog, outro } from "@clack/prompts";
 import { buildProfile } from "../analyze/build-profile.js";
 import type { Profile } from "../analyze/types.js";
 import { accountEmails, resolveGitHubSource, type GitHubSource } from "../github/account.js";
@@ -21,6 +21,7 @@ import type { Commit } from "../scan/types.js";
 import { HELP_TEXT, parseCliArgs, UsageError, type CliOptions } from "./args.js";
 import { askRoots, askToOpen, CancelledError, canPrompt, pickEmails } from "./interactive.js";
 import { openFile } from "./open-file.js";
+import { type Progress, startQuestProgress } from "./quest-progress.js";
 import { expandHome, shortenHome } from "./paths.js";
 
 const TOP_EMAILS_SHOWN = 20;
@@ -29,7 +30,8 @@ const TOP_EMAILS_SHOWN = 20;
 interface Ui {
   info: (message: string) => void;
   warn: (message: string) => void;
-  progress: (message: string) => { update: (message: string) => void; done: (message: string) => void };
+  /** With a `total`, shows an XP bar that fills as `advance` reports how many items are done. */
+  progress: (message: string, total?: number) => Progress;
 }
 
 function plainUi(): Ui {
@@ -41,7 +43,7 @@ function plainUi(): Ui {
     warn: write,
     progress: (message) => {
       write(message);
-      return { update: () => undefined, done: write };
+      return { message: () => undefined, advance: () => undefined, done: write };
     },
   };
 }
@@ -50,11 +52,7 @@ function promptUi(): Ui {
   return {
     info: (message) => clackLog.info(message),
     warn: (message) => clackLog.warn(message),
-    progress: (message) => {
-      const indicator = spinner();
-      indicator.start(message);
-      return { update: (next) => indicator.message(next), done: (final) => indicator.stop(final) };
-    },
+    progress: startQuestProgress,
   };
 }
 
@@ -87,7 +85,7 @@ async function syncGitHub(login: string, ui: Ui): Promise<GitHubSync> {
   let source: GitHubSource;
   try {
     source = await resolveGitHubSource(new GitHubClient({ token }), login, {
-      onCheckProgress: (done, total) => listing.update(`Checking org and shared repos for your commits (${done}/${total})`),
+      onCheckProgress: (done, total) => listing.message(`Checking org and shared repos for your commits (${done}/${total})`),
     });
   } catch (error: unknown) {
     listing.done("Could not list GitHub repos");
@@ -104,9 +102,9 @@ async function syncGitHub(login: string, ui: Ui): Promise<GitHubSync> {
   if (!source.repos.length) return { source, repoPaths: [], token };
 
   const cacheDir = defaultCacheDir();
-  const syncing = ui.progress(`Syncing repos into ${shortenHome(cacheDir)}`);
-  const results = await syncMirrors(source.repos, cacheDir, token, (done, total) => syncing.update(`Syncing repos into ${shortenHome(cacheDir)} (${done}/${total})`));
-  syncing.done(`Synced ${results.filter((result) => !result.error).length}/${pluralRepos(results.length)}`);
+  const syncing = ui.progress("Syncing repos", source.repos.length);
+  const results = await syncMirrors(source.repos, cacheDir, token, syncing.advance);
+  syncing.done(`Synced ${results.filter((result) => !result.error).length}/${pluralRepos(results.length)} into ${shortenHome(cacheDir)}`);
   for (const failed of results.filter((result) => result.error)) {
     const reason = failed.error instanceof GitCommandError ? failed.error.stderr.trim().split("\n")[0] : failed.error?.message;
     ui.warn(`Could not sync ${failed.repo.fullName}${failed.path ? ", using the copy from last time" : ""}: ${reason}`);
@@ -124,8 +122,8 @@ interface History {
 /** GitHub mirrors hold no file contents yet, so only who committed what is read from them at this point. */
 async function readCommits(localRepos: string[], mirrorRepos: string[], ui: Ui): Promise<History> {
   const total = localRepos.length + mirrorRepos.length;
-  const reading = ui.progress("Reading your history");
-  const progressFrom = (offset: number) => (done: number): void => reading.update(`Reading your history (${offset + done}/${total} repos)`);
+  const reading = ui.progress("Reading your history", total);
+  const progressFrom = (offset: number) => (done: number): void => reading.advance(offset + done);
   const localResults = await readAllCommits(localRepos, progressFrom(0));
   const mirrorResults = await readAllCommits(mirrorRepos, progressFrom(localRepos.length), { withoutStats: true });
   const local = localResults.flatMap((result) => result.commits);
@@ -138,9 +136,8 @@ async function readCommits(localRepos: string[], mirrorRepos: string[], ui: Ui):
 /** Downloads only the files the chosen emails' commits touched, then reads those commits with line stats. */
 async function readMirrorStats(github: GitHubSync | null, emails: string[], ui: Ui): Promise<Commit[]> {
   if (!github?.repoPaths.length) return [];
-  const message = "Downloading the files your GitHub commits touched";
-  const reading = ui.progress(message);
-  const results = await readMirrorCommits(github.repoPaths, emails, github.token, (done, total) => reading.update(`${message} (${done}/${total} repos)`));
+  const reading = ui.progress("Fetching the files your commits touched", github.repoPaths.length);
+  const results = await readMirrorCommits(github.repoPaths, emails, github.token, reading.advance);
   const commits = results.flatMap((result) => result.commits);
   reading.done(`Read line stats for ${commits.length.toLocaleString("en-US")} GitHub commits`);
   reportSkipped(results, ui);

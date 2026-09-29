@@ -91,7 +91,7 @@ Prompts are also skipped automatically when there is no terminal or when `CI` is
 
 ## How it works
 
-- `src/cli`: argument parsing and the interactive prompts.
+- `src/cli`: argument parsing, the interactive prompts and the progress animation.
 - `src/scan`: finds repos, runs `git log --numstat --summary` and parses it.
 - `src/github`: lists an account's repos through the GitHub API, keeps light clones of them (history without file contents) in the cache.
 - `src/identity`: groups commits by author and guesses which emails are yours.
