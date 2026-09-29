@@ -4,7 +4,7 @@ Turn your git history into an RPG save file.
 
 gitquest scans every repo on your machine, finds the commits you authored since day one, and shows you what you actually achieved: your first test, the week you shipped your first Dockerfile, the 140-file refactor you forgot about, the languages you picked up along the way. Then it gives you a card to show it off on your GitHub profile.
 
-It runs locally. Your code and history never leave your machine.
+It runs locally. Your code and history never leave your machine. The only thing ever uploaded is the SVG cards, and only when you ask for it with `--publish`.
 
 ## What you get
 
@@ -30,7 +30,7 @@ gitquest asks you three things:
 2. **Which emails are yours.** It lists every author it found and pre-ticks the ones that match your git config (same email, same name, or your GitHub noreply address). Press `space` to toggle one, `a` to toggle all, `enter` to confirm.
 3. **Whether to open the report.**
 
-That's it. The report and the README cards land in `gitquest-report/`.
+That's it. The report and the README cards land in `gitquest-report/`. To put the card on your GitHub profile, see [Adding the card to your GitHub profile](#adding-the-card-to-your-github-profile).
 
 ## Scanning a whole GitHub account
 
@@ -75,6 +75,7 @@ npm run dev -- ~/code ~/work -e me@personal.dev -e me@company.com --no-input
 | `-n, --name <name>` | Player name shown on the report. Defaults to `git config user.name`. |
 | `-o, --out <folder>` | Output folder. Default `gitquest-report`. |
 | `-d, --depth <n>` | How deep to look for repos under each folder. Default 4. |
+| `--publish` | Commit the cards to your GitHub profile repo and show the player card in its README. |
 | `--list-emails` | Print every author email found, with commit counts. |
 | `--no-input` | Never prompt. Uses the current folder and your global `git config user.email` unless you pass them. |
 
@@ -82,8 +83,17 @@ Prompts are also skipped automatically when there is no terminal or when `CI` is
 
 ## Adding the card to your GitHub profile
 
-1. Copy `card.svg` (or `achievements.svg`, `badge.svg`) from the report folder into a `gitquest/` folder in your profile repo (`github.com/<you>/<you>`).
-2. Add this to its README:
+GitHub shows the README of your profile repo, the one named after you (`github.com/<you>/<you>`), at the top of your profile. One command puts your cards there:
+
+```sh
+npm run dev -- --github <you> --publish
+```
+
+gitquest commits `card.svg`, `achievements.svg` and `badge.svg` into a `gitquest/` folder of that repo, in a single commit, straight through the GitHub API. There's nothing to clone. If the README doesn't show a gitquest card yet, the player card is added at the end. Move the line wherever you like, or swap it for another card: gitquest leaves the README alone once it links any file in `gitquest/`. Run the same command again to refresh your stats. When nothing changed, nothing is committed.
+
+It needs a token for your own account that can write to the repo. `gh auth login` gives you one. If the profile repo doesn't exist yet, create a public repo named after your username on GitHub first.
+
+You can also do it by hand: copy the SVGs from the report folder into a `gitquest/` folder of the profile repo and add this to its README:
 
 ```md
 ![gitquest](./gitquest/card.svg)
@@ -93,7 +103,7 @@ Prompts are also skipped automatically when there is no terminal or when `CI` is
 
 - `src/cli`: argument parsing, the interactive prompts and the progress animation.
 - `src/scan`: finds repos, runs `git log --numstat --summary` and parses it.
-- `src/github`: lists an account's repos through the GitHub API, keeps light clones of them (history without file contents) in the cache.
+- `src/github`: lists an account's repos through the GitHub API, keeps light clones of them (history without file contents) in the cache, and publishes the cards to the profile repo.
 - `src/identity`: groups commits by author and guesses which emails are yours.
 - `src/analyze`: stats, "firsts" detection, achievements, level and yearly chapters. Lockfiles, `node_modules`, build output and vendored code are ignored so they don't inflate your numbers.
 - `src/report`: renders the HTML report and SVG cards.

@@ -19,6 +19,8 @@ const HTTP_NOT_FOUND = 404;
 const HTTP_CONFLICT = 409;
 const HTTP_TOO_MANY_REQUESTS = 429;
 const HTTP_SERVER_ERROR = 500;
+/** Git's mode for a regular, non-executable file. */
+const REGULAR_FILE_MODE = "100644";
 /** GitHub owner and repo names only use these characters, which also keeps them safe as folder names. */
 const SAFE_NAME = /^[A-Za-z0-9._-]+$/;
 
@@ -46,8 +48,13 @@ export interface DateWindow {
   to: Date;
 }
 
+export interface RepoFile {
+  path: string;
+  content: string;
+}
+
 interface RequestOptions {
-  method?: "GET" | "POST";
+  method?: "GET" | "POST" | "PATCH";
   body?: unknown;
 }
 
@@ -231,6 +238,69 @@ export class GitHubClient {
       repos.push(...entries.map((entry) => parseGraphQLRepo(dig(entry, "repository"))).filter((repo): repo is GitHubRepo => repo !== null));
     }
     return repos;
+  }
+
+  /** The repo's default branch, or null when the repo does not exist or the token cannot see it. */
+  async getDefaultBranch(owner: string, repo: string): Promise<string | null> {
+    const path = `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`;
+    const body = await this.requestOrNull(path);
+    if (body === null) return null;
+    const branch = dig(body, "default_branch");
+    if (typeof branch !== "string") throw new GitHubResponseError(path);
+    return branch;
+  }
+
+  /** The commit a branch points to and that commit's tree, or null when the branch has no commits yet. */
+  async getBranchHead(owner: string, repo: string, branch: string): Promise<{ commit: string; tree: string } | null> {
+    const base = `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/git`;
+    const refPath = `${base}/ref/heads/${encodeURIComponent(branch)}`;
+    const ref = await this.requestOrNull(refPath);
+    if (ref === null) return null;
+    const commit = dig(ref, "object", "sha");
+    if (typeof commit !== "string") throw new GitHubResponseError(refPath);
+    const commitPath = `${base}/commits/${commit}`;
+    const tree = dig(await this.request(commitPath), "tree", "sha");
+    if (typeof tree !== "string") throw new GitHubResponseError(commitPath);
+    return { commit, tree };
+  }
+
+  /** The repo's README, wherever GitHub finds it, or null when there is none. */
+  async getReadme(owner: string, repo: string, ref: string): Promise<RepoFile | null> {
+    const path = `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/readme?ref=${encodeURIComponent(ref)}`;
+    const body = await this.requestOrNull(path);
+    if (body === null) return null;
+    const filePath = dig(body, "path");
+    const content = dig(body, "content");
+    if (typeof filePath !== "string" || typeof content !== "string") throw new GitHubResponseError(path);
+    return { path: filePath, content: Buffer.from(content, "base64").toString("utf8") };
+  }
+
+  /** Commits `files` on top of `parent` and returns the new commit, or null when they change nothing. */
+  async commitFiles(owner: string, repo: string, parent: { commit: string; tree: string }, files: RepoFile[], message: string): Promise<string | null> {
+    const base = `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/git`;
+    const entries = files.map((file) => ({ path: file.path, mode: REGULAR_FILE_MODE, type: "blob", content: file.content }));
+    const tree = dig(await this.request(`${base}/trees`, { method: "POST", body: { base_tree: parent.tree, tree: entries } }), "sha");
+    if (typeof tree !== "string") throw new GitHubResponseError(`${base}/trees`);
+    if (tree === parent.tree) return null;
+    const commit = dig(await this.request(`${base}/commits`, { method: "POST", body: { message, tree, parents: [parent.commit] } }), "sha");
+    if (typeof commit !== "string") throw new GitHubResponseError(`${base}/commits`);
+    return commit;
+  }
+
+  /** Moves a branch to `commit`. Fails instead of overwriting when someone pushed in the meantime. */
+  async updateBranch(owner: string, repo: string, branch: string, commit: string): Promise<void> {
+    const path = `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/git/refs/heads/${encodeURIComponent(branch)}`;
+    await this.request(path, { method: "PATCH", body: { sha: commit, force: false } });
+  }
+
+  private async requestOrNull(path: string): Promise<unknown> {
+    try {
+      return await this.request(path);
+    } catch (error: unknown) {
+      // 409 is what GitHub answers for branches and files of a repo with no commits yet.
+      if (error instanceof GitHubApiError && (error.status === HTTP_NOT_FOUND || error.status === HTTP_CONFLICT)) return null;
+      throw error;
+    }
   }
 
   private async graphql(query: string, variables: Record<string, string>): Promise<unknown> {

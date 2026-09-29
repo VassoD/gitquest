@@ -36,3 +36,10 @@ export class GitHubResponseError extends GitHubApiError {
     super(`GitHub sent an unexpected response for ${path}.`, null);
   }
 }
+
+export class GitHubPublishError extends GitHubApiError {
+  override name = "GitHubPublishError";
+  constructor(message: string) {
+    super(message, null);
+  }
+}

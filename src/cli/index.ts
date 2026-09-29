@@ -7,8 +7,9 @@ import { buildProfile } from "../analyze/build-profile.js";
 import type { Profile } from "../analyze/types.js";
 import { accountEmails, resolveGitHubSource, type GitHubSource } from "../github/account.js";
 import { GitHubClient } from "../github/api.js";
-import { GitHubApiError } from "../github/errors.js";
+import { GitHubApiError, GitHubPublishError } from "../github/errors.js";
 import { defaultCacheDir, readMirrorCommits, syncMirrors } from "../github/mirror.js";
+import { type CardFile, publishCards } from "../github/publish.js";
 import { resolveGitHubToken } from "../github/token.js";
 import { collectAuthors, suggestOwnEmails, type KnownSelf } from "../identity/authors.js";
 import { renderAchievementStrip, renderMiniBadge, renderPlayerCard } from "../report/cards.js";
@@ -171,16 +172,49 @@ async function chooseEmails(options: CliOptions, commits: Commit[], interactive:
   return knownEmails;
 }
 
-async function writeReport(profile: Profile, outDir: string): Promise<string> {
+function renderCards(profile: Profile): CardFile[] {
+  return [
+    { name: CARD_FILES.full, svg: renderPlayerCard(profile) },
+    { name: CARD_FILES.badges, svg: renderAchievementStrip(profile) },
+    { name: CARD_FILES.mini, svg: renderMiniBadge(profile) },
+  ];
+}
+
+async function writeReport(profile: Profile, cards: CardFile[], outDir: string): Promise<string> {
   await mkdir(outDir, { recursive: true });
   const reportPath = join(outDir, "index.html");
-  await Promise.all([
-    writeFile(reportPath, renderReport(profile)),
-    writeFile(join(outDir, CARD_FILES.full), renderPlayerCard(profile)),
-    writeFile(join(outDir, CARD_FILES.badges), renderAchievementStrip(profile)),
-    writeFile(join(outDir, CARD_FILES.mini), renderMiniBadge(profile)),
-  ]);
+  await Promise.all([writeFile(reportPath, renderReport(profile)), ...cards.map((card) => writeFile(join(outDir, card.name), card.svg))]);
   return reportPath;
+}
+
+interface PublishTarget {
+  client: GitHubClient;
+  login: string;
+}
+
+/** Checked before scanning, so a missing or wrong token fails fast instead of after a long sync. */
+async function resolvePublishTarget(githubLogin: string | null): Promise<PublishTarget> {
+  const token = await resolveGitHubToken();
+  if (!token) throw new GitHubPublishError("--publish needs a GitHub token for your account. Set GITHUB_TOKEN or run `gh auth login`.");
+  const client = new GitHubClient({ token });
+  const owner = await client.getAuthenticatedAccount();
+  if (!owner) throw new GitHubPublishError("--publish could not tell which GitHub account your token belongs to.");
+  if (githubLogin && githubLogin.toLowerCase() !== owner.login.toLowerCase()) {
+    throw new GitHubPublishError(`--publish writes to your own profile, but your GitHub token belongs to @${owner.login}, not @${githubLogin}.`);
+  }
+  return { client, login: owner.login };
+}
+
+async function publishToProfile(target: PublishTarget, cards: CardFile[], ui: Ui): Promise<void> {
+  const publishing = ui.progress(`Publishing your cards to github.com/${target.login}/${target.login}`);
+  try {
+    const result = await publishCards(target.client, target.login, cards, CARD_FILES.full);
+    const readmeNote = result.readmePath ? `, and added the player card to ${result.readmePath}` : "";
+    publishing.done(result.committed ? `Published to ${result.repoUrl}${readmeNote}` : `Your cards on ${result.repoUrl} are already up to date`);
+  } catch (error: unknown) {
+    publishing.done("Could not publish your cards");
+    throw error;
+  }
 }
 
 async function run(argv: string[]): Promise<void> {
@@ -198,6 +232,7 @@ async function run(argv: string[]): Promise<void> {
   const ui = interactive ? promptUi() : plainUi();
   if (interactive) intro("gitquest · load your save file");
 
+  const publishTarget = options.publish ? await resolvePublishTarget(options.github) : null;
   const [email, name] = await Promise.all([readGitConfig("user.email"), readGitConfig("user.name")]);
   const rawRoots = options.roots.length ? options.roots : options.github ? [] : interactive ? await askRoots() : ["."];
   const roots = rawRoots.map((root) => resolve(expandHome(root)));
@@ -229,10 +264,12 @@ async function run(argv: string[]): Promise<void> {
   }
 
   const profile = buildProfile(options.player ?? self.name ?? userInfo().username, mine);
-  const reportPath = await writeReport(profile, resolve(expandHome(options.outDir)));
+  const cards = renderCards(profile);
+  const reportPath = await writeReport(profile, cards, resolve(expandHome(options.outDir)));
   const unlocked = profile.achievements.filter((achievement) => achievement.unlocked).length;
   const summary = `${profile.player} · Lv. ${profile.level.level} ${profile.className}\n${mine.length.toLocaleString("en-US")} commits · ${unlocked}/${profile.achievements.length} achievements unlocked`;
   ui.info(summary);
+  if (publishTarget) await publishToProfile(publishTarget, cards, ui);
 
   if (interactive && (await askToOpen()) && (await openFile(reportPath))) {
     outro(`Report opened. It lives at ${shortenHome(reportPath)}`);

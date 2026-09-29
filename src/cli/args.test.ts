@@ -22,3 +22,10 @@ describe("parseCliArgs --github", () => {
     expect(() => parseCliArgs(["--github", "-bad"])).toThrow(UsageError);
   });
 });
+
+describe("parseCliArgs --publish", () => {
+  it("should be off unless asked for", () => {
+    expect(parseCliArgs([]).publish).toBe(false);
+    expect(parseCliArgs(["--github", "octocat", "--publish"]).publish).toBe(true);
+  });
+});

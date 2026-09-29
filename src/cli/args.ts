@@ -14,6 +14,8 @@ export interface CliOptions {
   outDir: string;
   depth: number;
   listEmails: boolean;
+  /** Commit the cards to the GitHub profile repo after generating them. */
+  publish: boolean;
   noInput: boolean;
   help: boolean;
   version: boolean;
@@ -30,7 +32,8 @@ Usage
 
   Run it with no options and it asks you where your repos are and which
   emails are yours. It then writes an HTML report plus SVG cards for your
-  GitHub profile README. Nothing leaves your machine.
+  GitHub profile README. Nothing leaves your machine, except the
+  cards when you pass --publish.
 
 Options
   -g, --github <user>   Scan every repo of a GitHub account. Repos are cloned
@@ -43,6 +46,9 @@ Options
   -n, --name <name>     Player name shown on the report.
   -o, --out <folder>    Where to write the report (default: ${DEFAULT_OUT_DIR}).
   -d, --depth <n>       How deep to look for repos (default: ${DEFAULT_DEPTH}).
+      --publish         Commit the cards to your GitHub profile repo
+                        (github.com/<you>/<you>) and show the player card
+                        in its README. Needs a token for your account.
       --list-emails     List every author email found, to spot your old ones.
       --no-input        Never prompt. Uses the current folder and your
                         global git user.email unless you pass them.
@@ -55,6 +61,7 @@ Examples
   gitquest ~/code ~/work -e me@personal.dev -e me@company.com
   gitquest ~/code --list-emails
   gitquest --github octocat
+  gitquest --github octocat --publish
   gitquest ~/code --github octocat`;
 
 export function parseCliArgs(argv: string[]): CliOptions {
@@ -70,6 +77,7 @@ export function parseCliArgs(argv: string[]): CliOptions {
         out: { type: "string", short: "o" },
         depth: { type: "string", short: "d" },
         "list-emails": { type: "boolean" },
+        publish: { type: "boolean" },
         "no-input": { type: "boolean" },
         help: { type: "boolean", short: "h" },
         version: { type: "boolean", short: "v" },
@@ -93,6 +101,7 @@ export function parseCliArgs(argv: string[]): CliOptions {
     outDir: values.out ?? DEFAULT_OUT_DIR,
     depth,
     listEmails: values["list-emails"] ?? false,
+    publish: values.publish ?? false,
     noInput: values["no-input"] ?? false,
     help: values.help ?? false,
     version: values.version ?? false,
