@@ -1,5 +1,6 @@
 import type { Commit } from "../scan/types.js";
-import { isNoisePath, isProgrammingLanguage, languageOf } from "./languages.js";
+import { lineWeight, meaningfulFiles } from "./commit-weight.js";
+import { isProgrammingLanguage, languageOf } from "./languages.js";
 import { isConventional, LANGUAGE_MIN_LINES } from "./stats.js";
 import type { Achievement, AchievementKind, First, IconName, Rarity, Stats } from "./types.js";
 
@@ -45,10 +46,10 @@ function dateLanguageCountReached(commits: Commit[], target: number): Date | nul
   const linesByLanguage = new Map<string, number>();
   const known = new Set<string>();
   for (const commit of commits) {
-    for (const file of commit.files) {
+    for (const file of meaningfulFiles(commit)) {
       const language = languageOf(file.path);
-      if (!language || !isProgrammingLanguage(language.name) || isNoisePath(file.path)) continue;
-      const lines = (linesByLanguage.get(language.name) ?? 0) + file.added;
+      if (!language || !isProgrammingLanguage(language.name)) continue;
+      const lines = (linesByLanguage.get(language.name) ?? 0) + Math.round(file.added * lineWeight(commit));
       linesByLanguage.set(language.name, lines);
       if (lines >= LANGUAGE_MIN_LINES) known.add(language.name);
     }
@@ -69,7 +70,7 @@ function fromCount(target: number, valueOf: (commit: Commit) => number, current:
 }
 
 const deletedLines = (commit: Commit): number =>
-  commit.files.filter((file) => !isNoisePath(file.path)).reduce((sum, file) => sum + file.deleted, 0);
+  Math.round(meaningfulFiles(commit).reduce((sum, file) => sum + file.deleted, 0) * lineWeight(commit));
 
 const DEFINITIONS: Definition[] = [
   { id: "first-blood", kind: "first", name: "First Blood", description: "Wrote your first test", icon: "sword", rarity: "rare", evaluate: fromFirst("test") },
@@ -82,7 +83,7 @@ const DEFINITIONS: Definition[] = [
     evaluate: fromCount(THRESHOLDS.janitorDeletedLines, deletedLines, (stats) => stats.deleted),
   },
   {
-    id: "refactor-boss", kind: "milestone", name: "Refactor Boss", description: `Touched ${THRESHOLDS.refactorFiles}+ files in a single commit`, icon: "crown", rarity: "legendary",
+    id: "refactor-boss", kind: "milestone", name: "Refactor Boss", description: `Edited ${THRESHOLDS.refactorFiles}+ files in a single commit`, icon: "crown", rarity: "legendary",
     evaluate: ({ stats }) => ({
       current: stats.biggestCommit?.files ?? 0,
       target: THRESHOLDS.refactorFiles,

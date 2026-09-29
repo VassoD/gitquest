@@ -14,11 +14,15 @@ export interface RepoScanResult {
 async function readRepoCommits(repoPath: string): Promise<Commit[]> {
   const output = await runGit(repoPath, [
     "log",
-    "--all",
+    // Real branches only. --all would also pick up stashes, notes and hidden refs that AI coding tools create.
+    "--branches",
+    "--tags",
+    "--remotes",
     "--no-merges",
     "--numstat",
     "--summary",
-    "--no-renames",
+    // Rename detection keeps a moved folder from counting as thousands of new lines.
+    "--find-renames",
     `--pretty=format:${GIT_LOG_FORMAT}`,
   ]);
   return parseGitLog(output, basename(repoPath));
@@ -49,11 +53,19 @@ export async function readAllCommits(
   return results;
 }
 
-/** Same commit can appear in several clones or forks. Keep one. */
+/**
+ * The same work can show up several times: in several clones or forks (same hash),
+ * or rebased and cherry-picked onto other branches (new hash, same author, date and message).
+ */
+function identityKey(commit: Commit): string {
+  return `${commit.authorEmail}\u0000${commit.authoredAt.getTime()}\u0000${commit.subject}`;
+}
+
 export function dedupeCommits(commits: Commit[]): Commit[] {
   const seen = new Map<string, Commit>();
   for (const commit of commits) {
-    if (!seen.has(commit.hash)) seen.set(commit.hash, commit);
+    const key = identityKey(commit);
+    if (!seen.has(key)) seen.set(key, commit);
   }
   return [...seen.values()].sort((a, b) => a.authoredAt.getTime() - b.authoredAt.getTime());
 }

@@ -55,9 +55,16 @@ export function isProgrammingLanguage(name: string): boolean {
   return PROGRAMMING_LANGUAGES.has(name);
 }
 
-const NOISE_PATH = /(^|\/)(node_modules|dist|build|vendor|\.next|coverage)\/|(package-lock\.json|yarn\.lock|pnpm-lock\.yaml|bun\.lockb|Cargo\.lock|poetry\.lock|go\.sum)$|\.min\.(js|css)$/;
+const NOISE_PATH = new RegExp(
+  [
+    String.raw`(^|/)(node_modules|dist|build|vendor|\.next|coverage|logs?)/`,
+    String.raw`(package-lock\.json|yarn\.lock|pnpm-lock\.yaml|bun\.lockb|Cargo\.lock|poetry\.lock|go\.sum)$`,
+    String.raw`\.min\.(js|css)$`,
+    String.raw`\.(log|map)$`,
+  ].join("|"),
+);
 
-/** Lockfiles, build output and vendored code say nothing about the author. */
+/** Lockfiles, logs, build output and vendored code say nothing about the author. */
 export function isNoisePath(path: string): boolean {
   return NOISE_PATH.test(path);
 }

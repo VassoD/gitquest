@@ -55,3 +55,11 @@ describe("resolveRenamedPath", () => {
     expect(resolveRenamedPath("a.ts => b.ts")).toBe("b.ts");
   });
 });
+
+describe("parseGitLog with rename detection", () => {
+  it("should record the new path of a renamed file with only its real line changes", () => {
+    const [commit] = parseGitLog(`${R}abc${F}me@example.com${F}Me${F}2025-07-30T10:00:00+02:00${F}refactor: rename\n0\t0\tsrc/{newspulse => intelply}/search.ts\n rename src/{newspulse => intelply}/search.ts (100%)`, "r");
+    expect(commit?.files).toEqual([{ path: "src/intelply/search.ts", added: 0, deleted: 0, isBinary: false }]);
+    expect(commit?.createdPaths).toEqual([]);
+  });
+});

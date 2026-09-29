@@ -1,5 +1,6 @@
 import type { Commit } from "../scan/types.js";
-import { isNoisePath, isProgrammingLanguage, languageOf } from "./languages.js";
+import { editedFileCount, lineWeight, meaningfulFiles } from "./commit-weight.js";
+import { isProgrammingLanguage, languageOf } from "./languages.js";
 import type { BiggestCommit, Stats, Streak, YearStats } from "./types.js";
 
 const NIGHT_OWL_END_HOUR = 5;
@@ -32,10 +33,6 @@ export function longestStreak(localDates: string[]): Streak {
     if (length > best.days) best = { days: length, start: days[runStart] ?? null, end: current };
   }
   return best;
-}
-
-function meaningfulFiles(commit: Commit): Commit["files"] {
-  return commit.files.filter((file) => !isNoisePath(file.path));
 }
 
 interface YearAccumulator {
@@ -74,8 +71,9 @@ export function computeStats(commits: Commit[]): Stats {
     yearly.set(year, bucket);
 
     const files = meaningfulFiles(commit);
-    const commitAdded = files.reduce((sum, file) => sum + file.added, 0);
-    const commitDeleted = files.reduce((sum, file) => sum + file.deleted, 0);
+    const weight = lineWeight(commit);
+    const commitAdded = Math.round(files.reduce((sum, file) => sum + file.added, 0) * weight);
+    const commitDeleted = Math.round(files.reduce((sum, file) => sum + file.deleted, 0) * weight);
     added += commitAdded;
     deleted += commitDeleted;
     bucket.commits += 1;
@@ -90,16 +88,18 @@ export function computeStats(commits: Commit[]): Stats {
       conventionalCommits += 1;
       bucket.conventional += 1;
     }
-    if (!biggestCommit || files.length > biggestCommit.files) {
-      biggestCommit = { files: files.length, repo: commit.repo, subject: commit.subject, date: commit.authoredAt };
+    const edited = editedFileCount(commit);
+    if (!biggestCommit || edited > biggestCommit.files) {
+      biggestCommit = { files: edited, repo: commit.repo, subject: commit.subject, date: commit.authoredAt };
     }
 
     for (const file of files) {
       const language = languageOf(file.path);
       if (!language) continue;
-      increment(languageLines, language.name, file.added);
-      increment(bucket.languageLines, language.name, file.added);
-      disciplineLines[language.discipline] = (disciplineLines[language.discipline] ?? 0) + file.added;
+      const lines = Math.round(file.added * weight);
+      increment(languageLines, language.name, lines);
+      increment(bucket.languageLines, language.name, lines);
+      disciplineLines[language.discipline] = (disciplineLines[language.discipline] ?? 0) + lines;
     }
   }
 
