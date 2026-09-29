@@ -5,7 +5,12 @@ import { join, resolve } from "node:path";
 import { cancel, intro, log as clackLog, outro, spinner } from "@clack/prompts";
 import { buildProfile } from "../analyze/build-profile.js";
 import type { Profile } from "../analyze/types.js";
-import { collectAuthors, suggestOwnEmails } from "../identity/authors.js";
+import { accountEmails, resolveGitHubSource, type GitHubSource } from "../github/account.js";
+import { GitHubClient } from "../github/api.js";
+import { GitHubApiError } from "../github/errors.js";
+import { defaultCacheDir, readMirrorCommits, syncMirrors } from "../github/mirror.js";
+import { resolveGitHubToken } from "../github/token.js";
+import { collectAuthors, suggestOwnEmails, type KnownSelf } from "../identity/authors.js";
 import { renderAchievementStrip, renderMiniBadge, renderPlayerCard } from "../report/cards.js";
 import { CARD_FILES, renderReport } from "../report/html.js";
 import { GitCommandError, GitNotFoundError, NoReposFoundError } from "../scan/errors.js";
@@ -58,19 +63,86 @@ async function readVersion(): Promise<string> {
   return packageJson.version ?? "unknown";
 }
 
-async function scan(roots: string[], depth: number, ui: Ui): Promise<Commit[]> {
+function pluralRepos(count: number): string {
+  return `${count} ${count === 1 ? "repo" : "repos"}`;
+}
+
+async function findLocalRepos(roots: string[], depth: number, ui: Ui): Promise<string[]> {
+  if (!roots.length) return [];
   const search = ui.progress(`Looking for repos in ${roots.map(shortenHome).join(", ")}`);
   const repoPaths = await findRepos(roots, depth);
-  if (!repoPaths.length) {
-    search.done("No repos found");
-    throw new NoReposFoundError(roots.map(shortenHome));
-  }
-  search.done(`Found ${repoPaths.length} ${repoPaths.length === 1 ? "repo" : "repos"}`);
+  search.done(repoPaths.length ? `Found ${pluralRepos(repoPaths.length)}` : "No repos found");
+  return repoPaths;
+}
 
+interface GitHubSync {
+  source: GitHubSource;
+  repoPaths: string[];
+  token: string | null;
+}
+
+async function syncGitHub(login: string, ui: Ui): Promise<GitHubSync> {
+  const token = await resolveGitHubToken();
+  const listing = ui.progress(`Listing @${login}'s repos on GitHub`);
+  let source: GitHubSource;
+  try {
+    source = await resolveGitHubSource(new GitHubClient({ token }), login, {
+      onCheckProgress: (done, total) => listing.update(`Checking org and shared repos for your commits (${done}/${total})`),
+    });
+  } catch (error: unknown) {
+    listing.done("Could not list GitHub repos");
+    throw error;
+  }
+  const others = source.repos.length - source.ownedCount;
+  const breakdown = `${source.ownedCount} owned, ${others} more with @${source.account.login}'s commits`;
+  listing.done(`Found ${pluralRepos(source.repos.length)} on GitHub: ${breakdown}${source.includesPrivate ? "" : " (public only)"}`);
+  if (!source.includesPrivate) {
+    ui.warn(token
+      ? `Your GitHub token belongs to another account, so @${source.account.login}'s private repos are left out.`
+      : "No GitHub token found, so only public repos you own are included. Set GITHUB_TOKEN or run `gh auth login` to add private repos and the ones you contributed to.");
+  }
+  if (!source.repos.length) return { source, repoPaths: [], token };
+
+  const cacheDir = defaultCacheDir();
+  const syncing = ui.progress(`Syncing repos into ${shortenHome(cacheDir)}`);
+  const results = await syncMirrors(source.repos, cacheDir, token, (done, total) => syncing.update(`Syncing repos into ${shortenHome(cacheDir)} (${done}/${total})`));
+  syncing.done(`Synced ${results.filter((result) => !result.error).length}/${pluralRepos(results.length)}`);
+  for (const failed of results.filter((result) => result.error)) {
+    const reason = failed.error instanceof GitCommandError ? failed.error.stderr.trim().split("\n")[0] : failed.error?.message;
+    ui.warn(`Could not sync ${failed.repo.fullName}${failed.path ? ", using the copy from last time" : ""}: ${reason}`);
+  }
+  return { source, repoPaths: results.flatMap((result) => (result.path ? [result.path] : [])), token };
+}
+
+interface History {
+  /** Commits from local repos, with line stats. */
+  local: Commit[];
+  /** Every commit found, for picking emails. Commits from GitHub mirrors have no line stats yet. */
+  all: Commit[];
+}
+
+/** GitHub mirrors hold no file contents yet, so only who committed what is read from them at this point. */
+async function readCommits(localRepos: string[], mirrorRepos: string[], ui: Ui): Promise<History> {
+  const total = localRepos.length + mirrorRepos.length;
   const reading = ui.progress("Reading your history");
-  const results = await readAllCommits(repoPaths, (done, total) => reading.update(`Reading your history (${done}/${total} repos)`));
-  const commits = dedupeCommits(results.flatMap((result) => result.commits));
-  reading.done(`Read ${commits.length.toLocaleString("en-US")} commits`);
+  const progressFrom = (offset: number) => (done: number): void => reading.update(`Reading your history (${offset + done}/${total} repos)`);
+  const localResults = await readAllCommits(localRepos, progressFrom(0));
+  const mirrorResults = await readAllCommits(mirrorRepos, progressFrom(localRepos.length), { withoutStats: true });
+  const local = localResults.flatMap((result) => result.commits);
+  const all = dedupeCommits([...local, ...mirrorResults.flatMap((result) => result.commits)]);
+  reading.done(`Read ${all.length.toLocaleString("en-US")} commits`);
+  reportSkipped([...localResults, ...mirrorResults], ui);
+  return { local, all };
+}
+
+/** Downloads only the files the chosen emails' commits touched, then reads those commits with line stats. */
+async function readMirrorStats(github: GitHubSync | null, emails: string[], ui: Ui): Promise<Commit[]> {
+  if (!github?.repoPaths.length) return [];
+  const message = "Downloading the files your GitHub commits touched";
+  const reading = ui.progress(message);
+  const results = await readMirrorCommits(github.repoPaths, emails, github.token, (done, total) => reading.update(`${message} (${done}/${total} repos)`));
+  const commits = results.flatMap((result) => result.commits);
+  reading.done(`Read line stats for ${commits.length.toLocaleString("en-US")} GitHub commits`);
   reportSkipped(results, ui);
   return commits;
 }
@@ -89,12 +161,17 @@ function printEmailCounts(commits: Commit[]): void {
   process.stderr.write(`\nAuthor emails found (commits):\n${lines.join("\n")}\n\nPass the ones that are you with -e, for example: gitquest ~/code -e a@x.com -e b@y.com\n`);
 }
 
-async function chooseEmails(options: CliOptions, commits: Commit[], interactive: boolean, self: { email: string | null; name: string | null }): Promise<string[]> {
+/** `knownEmails` are addresses we are sure about, like the git config email and the GitHub account's noreply ones. */
+async function chooseEmails(options: CliOptions, commits: Commit[], interactive: boolean, self: KnownSelf, knownEmails: string[]): Promise<string[]> {
   if (options.emails.length) return options.emails;
   const authors = collectAuthors(commits);
-  if (interactive) return pickEmails(authors, suggestOwnEmails(authors, self));
-  if (!self.email) throw new UsageError("No email to match commits against. Pass one with --email you@example.com.");
-  return [self.email];
+  if (interactive) {
+    const candidates = knownEmails.length ? knownEmails : [null];
+    const suggested = new Set(candidates.flatMap((email) => suggestOwnEmails(authors, { email, name: self.name })));
+    return pickEmails(authors, [...suggested]);
+  }
+  if (!knownEmails.length) throw new UsageError("No email to match commits against. Pass one with --email you@example.com.");
+  return knownEmails;
 }
 
 async function writeReport(profile: Profile, outDir: string): Promise<string> {
@@ -125,25 +202,36 @@ async function run(argv: string[]): Promise<void> {
   if (interactive) intro("gitquest · load your save file");
 
   const [email, name] = await Promise.all([readGitConfig("user.email"), readGitConfig("user.name")]);
-  const rawRoots = options.roots.length ? options.roots : interactive ? await askRoots() : ["."];
+  const rawRoots = options.roots.length ? options.roots : options.github ? [] : interactive ? await askRoots() : ["."];
   const roots = rawRoots.map((root) => resolve(expandHome(root)));
-  const commits = await scan(roots, options.depth, ui);
+  const localRepos = await findLocalRepos(roots, options.depth, ui);
+  const github = options.github ? await syncGitHub(options.github, ui) : null;
+  const mirrorRepos = github?.repoPaths ?? [];
+  if (!localRepos.length && !mirrorRepos.length) {
+    throw new NoReposFoundError([...roots.map(shortenHome), ...(options.github ? [`github.com/${options.github}`] : [])]);
+  }
+  const history = await readCommits(localRepos, mirrorRepos, ui);
 
   if (options.listEmails) {
-    printEmailCounts(commits);
+    printEmailCounts(history.all);
     return;
   }
 
-  const emails = new Set(await chooseEmails(options, commits, interactive, { email, name }));
-  const mine = commits.filter((commit) => emails.has(commit.authorEmail));
+  const githubAccount = github?.source.account ?? null;
+  const knownEmails = [...new Set([email, ...(githubAccount ? accountEmails(githubAccount) : [])].filter((known): known is string => known !== null))];
+  // In GitHub mode the scanned account may not be the person running gitquest, so its name wins.
+  const self = { email, name: githubAccount ? githubAccount.name ?? githubAccount.login : name };
+  const emails = new Set(await chooseEmails(options, history.all, interactive, self, knownEmails));
+  const mirrorCommits = await readMirrorStats(github, [...emails], ui);
+  const mine = dedupeCommits([...history.local, ...mirrorCommits]).filter((commit) => emails.has(commit.authorEmail));
   if (!mine.length) {
     ui.warn(`No commits found for ${[...emails].join(", ")}.`);
-    printEmailCounts(commits);
+    printEmailCounts(history.all);
     process.exitCode = 1;
     return;
   }
 
-  const profile = buildProfile(options.player ?? name ?? userInfo().username, mine);
+  const profile = buildProfile(options.player ?? self.name ?? userInfo().username, mine);
   const reportPath = await writeReport(profile, resolve(expandHome(options.outDir)));
   const unlocked = profile.achievements.filter((achievement) => achievement.unlocked).length;
   const summary = `${profile.player} · Lv. ${profile.level.level} ${profile.className}\n${mine.length.toLocaleString("en-US")} commits · ${unlocked}/${profile.achievements.length} achievements unlocked`;
@@ -160,7 +248,7 @@ async function run(argv: string[]): Promise<void> {
 run(process.argv.slice(2)).catch((error: unknown) => {
   if (error instanceof CancelledError) {
     cancel(error.message);
-  } else if (error instanceof UsageError || error instanceof NoReposFoundError || error instanceof GitNotFoundError) {
+  } else if (error instanceof UsageError || error instanceof NoReposFoundError || error instanceof GitNotFoundError || error instanceof GitHubApiError) {
     process.stderr.write(`Error: ${error.message}\n`);
     if (error instanceof UsageError) process.stderr.write("Run gitquest --help for usage.\n");
   } else {
