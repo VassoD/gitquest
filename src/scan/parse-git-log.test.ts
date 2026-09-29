@@ -3,12 +3,12 @@ import { FIELD_SEPARATOR as F, parseGitLog, RECORD_SEPARATOR as R, resolveRename
 
 describe("parseGitLog", () => {
   const output = [
-    `${R}abc123${F}Me@Example.com${F}2021-03-14T01:30:00+02:00${F}feat: add login`,
+    `${R}abc123${F}Me@Example.com${F}Me Myself${F}2021-03-14T01:30:00+02:00${F}feat: add login`,
     "12\t3\tsrc/login.ts",
     "-\t-\tassets/logo.png",
     " create mode 100644 src/login.test.ts",
     "",
-    `${R}def456${F}me@example.com${F}2021-03-15T10:00:00-05:00${F}fix: typo`,
+    `${R}def456${F}me@example.com${F}Me Myself${F}2021-03-15T10:00:00-05:00${F}fix: typo`,
     "1\t1\tREADME.md",
   ].join("\n");
 

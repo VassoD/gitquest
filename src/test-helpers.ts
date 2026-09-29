@@ -9,6 +9,7 @@ export function makeCommit(localDate: string, overrides: Partial<Commit> = {}, f
     hash: `hash${counter}`,
     repo: "repo",
     authorEmail: "me@example.com",
+    authorName: "Me",
     authoredAt: new Date(`${localDate}T12:00:00Z`),
     localDate,
     localHour: 12,

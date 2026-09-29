@@ -21,31 +21,35 @@ Requires Node 20+ and git.
 ```sh
 git clone <this repo> && cd gitquest
 npm install
-npm run dev -- ~/code
+npm run dev
 ```
 
-Then open `gitquest-report/index.html`.
+gitquest asks you three things:
 
-## Finding all your emails
+1. **Where your repos are.** One or more folders, like `~/code`.
+2. **Which emails are yours.** It lists every author it found and pre-ticks the ones that match your git config (same email, same name, or your GitHub noreply address). Press `space` to toggle one, `a` to toggle all, `enter` to confirm.
+3. **Whether to open the report.**
 
-You have probably committed with more than one email over the years (personal, work, GitHub noreply). List every author gitquest finds, then pass the ones that are you:
+That's it. The report and the README cards land in `gitquest-report/`.
+
+## Scripting and CI
+
+Every question has a flag, so you can skip the prompts:
 
 ```sh
-npm run dev -- ~/code --list-emails
-npm run dev -- ~/code -e me@personal.dev -e me@company.com -e 12345+me@users.noreply.github.com
+npm run dev -- ~/code ~/work -e me@personal.dev -e me@company.com --no-input
 ```
-
-If you pass no `--email`, gitquest uses your global `git config user.email`.
-
-## Options
 
 | Flag | Description |
 | --- | --- |
-| `-e, --email <email>` | An email you commit with. Repeat for each one. |
+| `-e, --email <email>` | An email you commit with. Repeat for each one. Skips the email picker. |
 | `-n, --name <name>` | Player name shown on the report. Defaults to `git config user.name`. |
 | `-o, --out <folder>` | Output folder. Default `gitquest-report`. |
 | `-d, --depth <n>` | How deep to look for repos under each folder. Default 4. |
 | `--list-emails` | Print every author email found, with commit counts. |
+| `--no-input` | Never prompt. Uses the current folder and your global `git config user.email` unless you pass them. |
+
+Prompts are also skipped automatically when there is no terminal or when `CI` is set.
 
 ## Adding the card to your GitHub profile
 
@@ -58,7 +62,9 @@ If you pass no `--email`, gitquest uses your global `git config user.email`.
 
 ## How it works
 
+- `src/cli`: argument parsing and the interactive prompts.
 - `src/scan`: finds repos, runs `git log --numstat --summary` and parses it.
+- `src/identity`: groups commits by author and guesses which emails are yours.
 - `src/analyze`: stats, "firsts" detection, achievements, level and yearly chapters. Lockfiles, `node_modules`, build output and vendored code are ignored so they don't inflate your numbers.
 - `src/report`: renders the HTML report and SVG cards.
 

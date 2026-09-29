@@ -4,7 +4,7 @@ export const RECORD_SEPARATOR = "\x1e";
 export const FIELD_SEPARATOR = "\x1f";
 
 /** Pass to `git log --pretty=format:` so parseGitLog can split the output. */
-export const GIT_LOG_FORMAT = `${RECORD_SEPARATOR}%H${FIELD_SEPARATOR}%ae${FIELD_SEPARATOR}%aI${FIELD_SEPARATOR}%s`;
+export const GIT_LOG_FORMAT = `${RECORD_SEPARATOR}%H${FIELD_SEPARATOR}%ae${FIELD_SEPARATOR}%an${FIELD_SEPARATOR}%aI${FIELD_SEPARATOR}%s`;
 
 const NUMSTAT_LINE = /^(\d+|-)\t(\d+|-)\t(.+)$/;
 const CREATE_LINE = /^ create mode \d+ (.+)$/;
@@ -25,7 +25,7 @@ export function resolveRenamedPath(rawPath: string): string {
 }
 
 function parseHeader(header: string, repo: string): Omit<Commit, "files" | "createdPaths"> | null {
-  const [hash, authorEmail, isoDate, ...subjectParts] = header.split(FIELD_SEPARATOR);
+  const [hash, authorEmail, authorName = "", isoDate, ...subjectParts] = header.split(FIELD_SEPARATOR);
   if (!hash || !authorEmail || !isoDate) return null;
   const authoredAt = new Date(isoDate);
   if (Number.isNaN(authoredAt.getTime())) return null;
@@ -34,6 +34,7 @@ function parseHeader(header: string, repo: string): Omit<Commit, "files" | "crea
     hash,
     repo,
     authorEmail: authorEmail.toLowerCase(),
+    authorName,
     authoredAt,
     localDate,
     localHour: Number(isoDate.match(ISO_HOUR)?.[1] ?? authoredAt.getUTCHours()),

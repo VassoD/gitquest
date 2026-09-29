@@ -27,10 +27,11 @@ export async function runGit(repoPath: string, args: string[]): Promise<string> 
   }
 }
 
-export async function readGlobalEmail(): Promise<string | null> {
+/** Reads a global git config value, or null when it is not set. */
+export async function readGitConfig(key: "user.email" | "user.name"): Promise<string | null> {
   try {
-    const email = await runGit(process.cwd(), ["config", "--global", "user.email"]);
-    return email.trim().toLowerCase() || null;
+    const value = (await runGit(process.cwd(), ["config", "--global", key])).trim();
+    return value ? (key === "user.email" ? value.toLowerCase() : value) : null;
   } catch {
     return null;
   }

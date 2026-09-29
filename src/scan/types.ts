@@ -9,6 +9,7 @@ export interface Commit {
   hash: string;
   repo: string;
   authorEmail: string;
+  authorName: string;
   authoredAt: Date;
   /** Calendar date in the author's own timezone, YYYY-MM-DD. */
   localDate: string;
