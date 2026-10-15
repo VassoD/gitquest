@@ -22,17 +22,27 @@ export function computeLevel(stats: Stats, achievements: Achievement[]): Level {
 
 const CLASS_SHARE_THRESHOLD = 0.25;
 const DOMINANT_SHARE_THRESHOLD = 0.6;
+/** Share of frontend lines that are stylesheets for a frontend player to count as a styling specialist. */
+const STYLE_SHARE_THRESHOLD = 0.4;
 
 export function computeClassName(stats: Stats): string {
   const lines = stats.disciplineLines;
   const total = Object.values(lines).reduce((sum, count) => sum + count, 0);
   if (!total) return "Code Adventurer";
-  const share = (discipline: string): number => (lines[discipline] ?? 0) / total;
+  const linesOf = (discipline: string): number => lines[discipline] ?? 0;
+  const share = (discipline: string): number => linesOf(discipline) / total;
+  const frontendLines = linesOf("frontend") + linesOf("style");
+  const frontendShare = frontendLines / total;
 
   if (share("infra") >= CLASS_SHARE_THRESHOLD) return "DevOps Warlock";
   if (share("data") >= CLASS_SHARE_THRESHOLD) return "Data Alchemist";
-  if (share("frontend") >= DOMINANT_SHARE_THRESHOLD) return "Frontend Illusionist";
+  if (share("mobile") >= CLASS_SHARE_THRESHOLD) return "Mobile Ranger";
+  if (share("test") >= CLASS_SHARE_THRESHOLD) return "Test Paladin";
+  if (share("docs") >= CLASS_SHARE_THRESHOLD) return "Lore Keeper";
+  if (frontendShare >= DOMINANT_SHARE_THRESHOLD) {
+    return linesOf("style") / frontendLines >= STYLE_SHARE_THRESHOLD ? "Pixel Painter" : "Frontend Illusionist";
+  }
   if (share("backend") >= DOMINANT_SHARE_THRESHOLD) return "Backend Blacksmith";
-  if (share("frontend") >= CLASS_SHARE_THRESHOLD && share("backend") >= CLASS_SHARE_THRESHOLD) return "Full-Stack Artificer";
+  if (frontendShare >= CLASS_SHARE_THRESHOLD && share("backend") >= CLASS_SHARE_THRESHOLD) return "Full-Stack Artificer";
   return "Code Adventurer";
 }

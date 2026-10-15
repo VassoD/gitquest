@@ -8,7 +8,7 @@ It runs locally. Your code and history never leave your machine. The only thing 
 
 ## What you get
 
-- **Character sheet**: level, XP and a class (Frontend Illusionist, Backend Blacksmith, DevOps Warlock...) based on what you write.
+- **Character sheet**: level, XP and a class (Frontend Illusionist, Backend Blacksmith, Test Paladin, Mobile Ranger, Lore Keeper...) based on what you write.
 - **Journey map**: every week since your first commit, with gold "boss fight" weeks where you unlocked something.
 - **Achievements**: 14 of them, from First Blood (your first test) to Refactor Boss (100+ files in one commit). Locked ones show your progress.
 - **Quest log**: one chapter per year, written from your stats.

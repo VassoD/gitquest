@@ -22,6 +22,30 @@ describe("computeClassName", () => {
     expect(computeClassName(stats)).toBe("Full-Stack Artificer");
   });
 
+  it("should count TypeScript under a server folder as backend", () => {
+    const stats = computeStats([makeCommit("2022-01-01", {}, [{ path: "web/app.tsx", added: 500 }, { path: "apps/api/users.ts", added: 400 }])]);
+    expect(computeClassName(stats)).toBe("Full-Stack Artificer");
+  });
+
+  it.each([
+    ["Mobile Ranger", "ios/App/AppDelegate.swift"],
+    ["Test Paladin", "src/user.test.ts"],
+    ["Lore Keeper", "docs/guide.md"],
+  ])("should name a player with a large share of %s files", (className, path) => {
+    const stats = computeStats([makeCommit("2022-01-01", {}, [{ path, added: 300 }, { path: "a.tsx", added: 500 }])]);
+    expect(computeClassName(stats)).toBe(className);
+  });
+
+  it("should call a frontend player who mostly writes stylesheets a pixel painter", () => {
+    const stats = computeStats([makeCommit("2022-01-01", {}, [{ path: "a.scss", added: 500 }, { path: "a.tsx", added: 500 }])]);
+    expect(computeClassName(stats)).toBe("Pixel Painter");
+  });
+
+  it("should keep the frontend class when stylesheets are a small part", () => {
+    const stats = computeStats([makeCommit("2022-01-01", {}, [{ path: "a.css", added: 100 }, { path: "a.tsx", added: 900 }])]);
+    expect(computeClassName(stats)).toBe("Frontend Illusionist");
+  });
+
   it("should fall back when there is no code", () => {
     expect(computeClassName(computeStats([]))).toBe("Code Adventurer");
   });
