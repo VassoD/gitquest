@@ -8,11 +8,49 @@ It runs locally. Your code and history never leave your machine. The only thing 
 
 ## What you get
 
-- **Character sheet**: level, XP and a class (Frontend Illusionist, Backend Blacksmith, Test Paladin, Mobile Ranger, Lore Keeper...) based on what you write.
+- **Character sheet**: level, XP and a class (Frontend Illusionist, Backend Blacksmith, Test Paladin, Mobile Ranger, Lore Keeper...) based on what you write. See [classes](#classes).
 - **Journey map**: every week since your first commit, with gold "boss fight" weeks where you unlocked something.
-- **Achievements**: 14 of them, from First Blood (your first test) to Refactor Boss (100+ files in one commit). Locked ones show your progress.
+- **Achievements**: 14 of them, from First Blood (your first test) to Refactor Boss (100+ files in one commit). Locked ones show your progress. See [the full list](#achievements).
 - **Quest log**: one chapter per year, written from your stats.
 - **README cards**: a player card, an achievement strip and a mini badge, as SVG.
+
+## Achievements and classes
+
+### Achievements
+
+| Achievement | Rarity | How to unlock it |
+| --- | --- | --- |
+| First Blood | Rare | Write your first test (`*.test.*`, `*.spec.*`, `__tests__/`, `_test.go`, `test_*.py`). |
+| Works On My Machine | Rare | Ship your first Dockerfile or Compose file. |
+| Pipeline Architect | Rare | Set up your first CI pipeline (GitHub Actions, GitLab CI or CircleCI). |
+| Schema Whisperer | Common | Write your first database migration (a file in a `migrations/` folder). |
+| Type Safe | Common | Write your first TypeScript file. |
+| Code Janitor | Epic | Delete 10,000 lines. Less is more. |
+| Refactor Boss | Legendary | Edit 100+ files in a single commit. |
+| Polyglot | Epic | Write real code in 5 languages, at least 200 lines each. Config and markup like YAML or HTML don't count. |
+| Night Owl | Common | Make 100 commits between midnight and 5am. |
+| Weekend Warrior | Common | Make 100 commits on a Saturday or Sunday. |
+| Unbroken | Epic | Commit 30 days in a row. |
+| Centurion | Rare | Reach 1,000 commits. |
+| Clear Messenger | Rare | Write 100 [conventional commit](https://www.conventionalcommits.org) messages (`feat:`, `fix:`...). |
+| Veteran | Epic | Commit code in 5 different years. |
+
+### Classes
+
+Your class comes from the lines you added, grouped by the kind of code. The first rule that matches wins.
+
+| Class | Rule |
+| --- | --- |
+| DevOps Warlock | 25%+ infra: Shell, YAML, Terraform, Dockerfiles. |
+| Data Alchemist | 25%+ data: SQL, R, notebooks. |
+| Mobile Ranger | 25%+ mobile: Swift, Dart, or anything under `ios/` or `android/`. |
+| Test Paladin | 25%+ test files. |
+| Lore Keeper | 25%+ docs: Markdown and reStructuredText. Changelogs don't count. |
+| Pixel Painter | 60%+ frontend, with stylesheets making up 40%+ of it. |
+| Frontend Illusionist | 60%+ frontend: components, stylesheets, HTML, and TypeScript or JavaScript outside server folders. |
+| Backend Blacksmith | 60%+ backend: Python, Go, Java, PHP and the like, plus TypeScript or JavaScript in server folders (`api/`, `server/`, `*-backend/`...) or NestJS-style files (`*.controller.ts`...). |
+| Full-Stack Artificer | 25%+ frontend and 25%+ backend. |
+| Code Adventurer | Everything else. |
 
 ## Quick start
 
